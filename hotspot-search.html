@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Dynamic Hotspot Search</title>
+<title>Image Hotspot Search</title>
 <style>
     body { font-family: Arial, sans-serif; margin: 0; padding: 8px; background: rgba(255,255,255,0.95); }
-    #searchBox { width: 100%; padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 8px; margin-bottom: 10px; }
+    #searchBox { width: 90%; padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 8px; margin-bottom: 10px; }
     #searchResults { max-height: 250px; overflow-y: auto; list-style: none; padding: 0; margin: 0; border-radius: 8px; }
     #searchResults li { padding: 8px; border-bottom: 1px solid #eee; cursor: pointer; }
     #searchResults li:hover { background-color: #f1f1f1; }
@@ -14,21 +14,25 @@
 </head>
 <body>
 
-<input type="text" id="searchBox" placeholder="Search hotspots in this scene...">
+<input type="text" id="searchBox" placeholder="Search image hotspots...">
 <ul id="searchResults"></ul>
 
 <script>
 let hotspots = [];
 
-// STEP 1: Collect hotspots from current scene
+// STEP 1: Collect only IMAGE hotspots
 function collectHotspots() {
     try {
         if (typeof pano !== "undefined" && pano.getPointHotspotIds) {
-            const ids = pano.getPointHotspotIds(); // Get all hotspot IDs in current scene
+            const ids = pano.getPointHotspotIds(); // Get all hotspot IDs
             hotspots = ids.map(id => {
                 const hs = pano.getHotspot(id);
-                return { id: id, name: hs.title || id };
-            });
+                // Filter only image hotspots
+                if (hs && hs.type === "image") {
+                    return { id: id, name: hs.title || id };
+                }
+                return null;
+            }).filter(Boolean); // Remove nulls
         } else {
             console.error("3DVista pano API not available. Ensure JavaScript API is enabled.");
         }
@@ -53,8 +57,14 @@ function filterHotspots() {
 
 // STEP 3: Jump to selected hotspot
 function gotoHotspot(id) {
-    try { pano.getHotspot(id).onclick(); }
-    catch (e) { console.error("Error jumping to hotspot", e); }
+    try {
+        const hs = pano.getHotspot(id);
+        if (hs && hs.onclick) {
+            hs.onclick(); // Trigger its action (show image popup, etc.)
+        }
+    } catch (e) {
+        console.error("Error jumping to hotspot", e);
+    }
 }
 
 // STEP 4: Initialize on load
