@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Search Image Hotspots (3D Panel)</title>
+<title>Search Image Hotspots (Entire Tour)</title>
 <style>
     body { font-family: Arial, sans-serif; margin: 0; padding: 8px; background: rgba(255,255,255,0.95); }
     #searchBox { width: 90%; padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 8px; margin-bottom: 10px; }
-    #searchResults { max-height: 250px; overflow-y: auto; list-style: none; padding: 0; margin: 0; border-radius: 8px; }
+    #searchResults { max-height: 300px; overflow-y: auto; list-style: none; padding: 0; margin: 0; border-radius: 8px; }
     #searchResults li { padding: 8px; border-bottom: 1px solid #eee; cursor: pointer; }
     #searchResults li:hover { background-color: #f1f1f1; }
 </style>
@@ -20,37 +20,47 @@
 <script>
 let imageHotspots = [];
 
-// STEP 1: Collect Image Hotspots from 3D Panel
+// STEP 1: Collect Image Hotspots from ALL scenes
 function collectImageHotspots() {
     try {
-        if (typeof pano !== "undefined" && pano.getPointHotspotIds) {
-            const ids = pano.getPointHotspotIds(); // Get all hotspot IDs in current scene
-            imageHotspots = ids.map(id => {
-                const hs = pano.getHotspot(id);
+        if (typeof tour !== "undefined" && tour.getSceneIds) {
+            const sceneIds = tour.getSceneIds(); // Get all scene IDs in the tour
 
-                // ✅ Filter only 3D Panel "image" hotspots
-                if (hs && hs.type === "image") {
-                    // Use image name (filename or title inside 3DVista)
-                    let imageName = "";
-                    if (hs.image && hs.image.src) {
-                        imageName = hs.image.src.split('/').pop(); // extract file name from path
-                    } else {
-                        imageName = hs.title || id; // fallback if no src
-                    }
+            sceneIds.forEach(sceneId => {
+                const scene = tour.getScene(sceneId);
+                if (scene && scene.getPointHotspotIds) {
+                    const hsIDs = scene.getPointHotspotIds();
 
-                    return { id: id, name: imageName };
+                    hsIDs.forEach(id => {
+                        const hs = scene.getHotspot(id);
+
+                        // ✅ Only include image hotspots
+                        if (hs && hs.type === "image") {
+                            let imageName = "";
+                            if (hs.image && hs.image.src) {
+                                imageName = hs.image.src.split('/').pop(); // filename only
+                            } else {
+                                imageName = hs.title || id;
+                            }
+
+                            imageHotspots.push({
+                                sceneId: sceneId,
+                                id: id,
+                                name: imageName
+                            });
+                        }
+                    });
                 }
-                return null;
-            }).filter(Boolean); // Remove nulls
+            });
         } else {
-            console.error("3DVista pano API not available. Ensure JavaScript API is enabled.");
+            console.error("3DVista tour API not available. Ensure JavaScript API is enabled.");
         }
     } catch (e) {
-        console.error("Error fetching image hotspots:", e);
+        console.error("Error fetching hotspots:", e);
     }
 }
 
-// STEP 2: Filter hotspots based on search input
+// STEP 2: Filter hotspots by search query
 function filterHotspots() {
     const query = document.getElementById('searchBox').value.toLowerCase();
     const results = imageHotspots.filter(hs => hs.name.toLowerCase().includes(query));
@@ -58,19 +68,25 @@ function filterHotspots() {
     list.innerHTML = '';
     results.forEach(hs => {
         const li = document.createElement('li');
-        li.textContent = hs.name;
-        li.onclick = () => gotoImageHotspot(hs.id);
+        li.textContent = `${hs.name}  (Scene: ${hs.sceneId})`;
+        li.onclick = () => gotoImageHotspot(hs.sceneId, hs.id);
         list.appendChild(li);
     });
 }
 
-// STEP 3: Jump to selected hotspot (activate it)
-function gotoImageHotspot(id) {
+// STEP 3: Go to the right scene & activate the hotspot
+function gotoImageHotspot(sceneId, hotspotId) {
     try {
-        const hs = pano.getHotspot(id);
-        if (hs && hs.onclick) {
-            hs.onclick(); // Trigger image hotspot action (open image)
-        }
+        tour.gotoScene(sceneId); // Jump to the scene
+        setTimeout(() => {
+            const scene = tour.getScene(sceneId);
+            if (scene) {
+                const hs = scene.getHotspot(hotspotId);
+                if (hs && hs.onclick) {
+                    hs.onclick(); // Trigger hotspot (open image)
+                }
+            }
+        }, 1500); // delay to ensure scene is fully loaded
     } catch (e) {
         console.error("Error activating image hotspot", e);
     }
@@ -80,7 +96,6 @@ function gotoImageHotspot(id) {
 window.addEventListener('load', () => {
     collectImageHotspots();
     document.getElementById('searchBox').addEventListener('keyup', filterHotspots);
-    filterHotspots();
 });
 </script>
 
