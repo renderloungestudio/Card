@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Image Hotspot Search</title>
+<title>Search Image Hotspots (3D Panel)</title>
 <style>
     body { font-family: Arial, sans-serif; margin: 0; padding: 8px; background: rgba(255,255,255,0.95); }
     #searchBox { width: 90%; padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 8px; margin-bottom: 10px; }
@@ -14,22 +14,31 @@
 </head>
 <body>
 
-<input type="text" id="searchBox" placeholder="Search image hotspots...">
+<input type="text" id="searchBox" placeholder="Search image hotspots by image name...">
 <ul id="searchResults"></ul>
 
 <script>
-let hotspots = [];
+let imageHotspots = [];
 
-// STEP 1: Collect only IMAGE hotspots
-function collectHotspots() {
+// STEP 1: Collect Image Hotspots from 3D Panel
+function collectImageHotspots() {
     try {
         if (typeof pano !== "undefined" && pano.getPointHotspotIds) {
-            const ids = pano.getPointHotspotIds(); // Get all hotspot IDs
-            hotspots = ids.map(id => {
+            const ids = pano.getPointHotspotIds(); // Get all hotspot IDs in current scene
+            imageHotspots = ids.map(id => {
                 const hs = pano.getHotspot(id);
-                // Filter only image hotspots
+
+                // ✅ Filter only 3D Panel "image" hotspots
                 if (hs && hs.type === "image") {
-                    return { id: id, name: hs.title || id };
+                    // Use image name (filename or title inside 3DVista)
+                    let imageName = "";
+                    if (hs.image && hs.image.src) {
+                        imageName = hs.image.src.split('/').pop(); // extract file name from path
+                    } else {
+                        imageName = hs.title || id; // fallback if no src
+                    }
+
+                    return { id: id, name: imageName };
                 }
                 return null;
             }).filter(Boolean); // Remove nulls
@@ -37,39 +46,39 @@ function collectHotspots() {
             console.error("3DVista pano API not available. Ensure JavaScript API is enabled.");
         }
     } catch (e) {
-        console.error("Error fetching hotspots:", e);
+        console.error("Error fetching image hotspots:", e);
     }
 }
 
 // STEP 2: Filter hotspots based on search input
 function filterHotspots() {
     const query = document.getElementById('searchBox').value.toLowerCase();
-    const results = hotspots.filter(hs => hs.name.toLowerCase().includes(query));
+    const results = imageHotspots.filter(hs => hs.name.toLowerCase().includes(query));
     const list = document.getElementById('searchResults');
     list.innerHTML = '';
     results.forEach(hs => {
         const li = document.createElement('li');
         li.textContent = hs.name;
-        li.onclick = () => gotoHotspot(hs.id);
+        li.onclick = () => gotoImageHotspot(hs.id);
         list.appendChild(li);
     });
 }
 
-// STEP 3: Jump to selected hotspot
-function gotoHotspot(id) {
+// STEP 3: Jump to selected hotspot (activate it)
+function gotoImageHotspot(id) {
     try {
         const hs = pano.getHotspot(id);
         if (hs && hs.onclick) {
-            hs.onclick(); // Trigger its action (show image popup, etc.)
+            hs.onclick(); // Trigger image hotspot action (open image)
         }
     } catch (e) {
-        console.error("Error jumping to hotspot", e);
+        console.error("Error activating image hotspot", e);
     }
 }
 
 // STEP 4: Initialize on load
 window.addEventListener('load', () => {
-    collectHotspots();
+    collectImageHotspots();
     document.getElementById('searchBox').addEventListener('keyup', filterHotspots);
     filterHotspots();
 });
