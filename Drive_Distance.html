@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Monaco Taxi Fare & Walk Time</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      background: #000;
+      color: #fff;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+    #container {
+      width: 360px;
+      background: #000;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 0 20px rgba(0,0,0,0.6);
+    }
+    #header {
+      display: flex;
+      justify-content: flex-start;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    #header h2 {
+      margin: 0;
+      font-size: 26px;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    label {
+      display: block;
+      margin: 12px 0 6px;
+      font-size: 14px;
+    }
+    input {
+      width: 94.5%;
+      padding: 10px;
+      border-radius: 10px;
+      border: none;
+      outline: none;
+      font-size: 13px;
+    }
+    button {
+      width: 100%;
+      background: #FFD700;
+      color: #000;
+      border: none;
+      padding: 12px;
+      border-radius: 12px;
+      font-weight: bold;
+      font-size: 16px;
+      margin-top: 20px;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+    button:hover {
+      background: #e6c200;
+    }
+    #map {
+      margin-top: 20px;
+      height: 220px;
+      width: 100%;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .fare-card {
+      margin-top: 15px;
+      background: #222;
+      padding: 12px;
+      border-radius: 12px;
+      font-size: 14px;
+    }
+    .fare-card h3 {
+      margin: 0 0 6px;
+      font-size: 16px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+  </style>
+  <!-- Replace YOUR_API_KEY -->
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyABFA7qyHlUusSFd9dzp9U4-xRp6mfYGZQ&libraries=places"></script>
+</head>
+<body>
+  <div id="container">
+    <div id="header">
+      <h2><img src="Driver.png" alt="Driver Emoji" style="height: 28px; vertical-align: middle; border-radius: 50%;"> Taxi Fare</h2>
+    </div>
+
+    <label>Pickup (Origin)</label>
+    <input id="origin" placeholder="Enter pickup location (Allowed areas only)" />
+
+    <label>Drop (Destination)</label>
+    <input id="destination" placeholder="Enter drop location (Allowed areas only)" />
+
+    <label>Or enter measured distance (km)</label>
+    <input id="measuredKm" placeholder="e.g. 2.3" />
+
+    <button id="calcBtn">Calculate Fare</button>
+
+    <div id="result"></div>
+    <div id="map"></div>
+  </div>
+
+<script>
+// --- Monaco rates ---
+const rates = {
+  taxi: { base: 5, perKm: 2 }
+};
+
+// --- Allowed Areas ---
+const allowedAreas = [
+  "Monaco",
+  "Cap-d'Ail",
+  "Beausoleil",
+  "Roquebrune-Cap-Martin"
+];
+
+let map, directionsService, directionsRenderer, trafficLayer, geocoder;
+let activeInput = null;
+
+function initMap() {
+  map = new google.maps.Map(document.getElementById('map'), {
+    center: { lat: 43.7384, lng: 7.4246 },
+    zoom: 14
+  });
+  directionsService = new google.maps.DirectionsService();
+  directionsRenderer = new google.maps.DirectionsRenderer({ map: map });
+
+  trafficLayer = new google.maps.TrafficLayer();
+  trafficLayer.setMap(map);
+
+  geocoder = new google.maps.Geocoder();
+
+  // Autocomplete (broad, but we'll validate manually)
+  const originAutocomplete = new google.maps.places.Autocomplete(
+    document.getElementById('origin')
+  );
+  const destAutocomplete = new google.maps.places.Autocomplete(
+    document.getElementById('destination')
+  );
+
+  // Validate allowed areas on selection
+  originAutocomplete.addListener("place_changed", () => {
+    let place = originAutocomplete.getPlace();
+    validatePlace(place, "origin");
+  });
+  destAutocomplete.addListener("place_changed", () => {
+    let place = destAutocomplete.getPlace();
+    validatePlace(place, "destination");
+  });
+
+  document.getElementById("origin").addEventListener("focus", () => {
+    activeInput = "origin";
+  });
+  document.getElementById("destination").addEventListener("focus", () => {
+    activeInput = "destination";
+  });
+
+  // Map click validation
+  map.addListener("click", (e) => {
+    if (!activeInput) return;
+    geocoder.geocode({ location: e.latLng }, (results, status) => {
+      if (status === "OK" && results[0]) {
+        if (isAllowedPlace(results[0])) {
+          document.getElementById(activeInput).value = results[0].formatted_address;
+        } else {
+          alert("❌ Please select a location only inside Monaco, Cap-d'Ail, Beausoleil or Roquebrune-Cap-Martin.");
+        }
+      }
+    });
+  });
+}
+
+// Check if place is allowed
+function isAllowedPlace(place) {
+  if (!place.address_components) return false;
+  return place.address_components.some(c =>
+    allowedAreas.includes(c.long_name)
+  );
+}
+
+function validatePlace(place, fieldId) {
+  if (!place || !place.address_components) {
+    document.getElementById(fieldId).value = "";
+    alert("❌ Invalid location.");
+    return;
+  }
+  if (!isAllowedPlace(place)) {
+    document.getElementById(fieldId).value = "";
+    alert("❌ Please enter a location only inside Monaco, Cap-d'Ail, Beausoleil or Roquebrune-Cap-Martin.");
+  }
+}
+
+// Helper to geocode and check if inside allowed areas
+function isInAllowedArea(place, callback) {
+  geocoder.geocode({ address: place }, (results, status) => {
+    if (status === "OK" && results[0]) {
+      const ok = isAllowedPlace(results[0]);
+      callback(ok);
+    } else {
+      callback(false);
+    }
+  });
+}
+
+function computeFare(distanceKm) {
+  return rates.taxi.base + (distanceKm * rates.taxi.perKm);
+}
+
+document.getElementById('calcBtn').addEventListener('click', () => {
+  const measuredVal = document.getElementById('measuredKm').value.trim();
+  const origin = document.getElementById('origin').value.trim();
+  const destination = document.getElementById('destination').value.trim();
+
+  if (measuredVal) {
+    const km = parseFloat(measuredVal);
+    if (!isFinite(km) || km <= 0) {
+      showResult('<div class="fare-card">Invalid measured distance.</div>');
+      return;
+    }
+    showFares(km, null, null, null, km + " km");
+    directionsRenderer.set('directions', null);
+    return;
+  }
+
+  if (!origin || !destination) {
+    showResult('<div class="fare-card">Enter pickup & drop OR measured distance.</div>');
+    return;
+  }
+
+  // ✅ Validate both origin & destination in allowed areas
+  isInAllowedArea(origin, (originValid) => {
+    if (!originValid) {
+      showResult('<div class="fare-card">❌ Pickup must be inside allowed areas.</div>');
+      return;
+    }
+    isInAllowedArea(destination, (destValid) => {
+      if (!destValid) {
+        showResult('<div class="fare-card">❌ Drop must be inside allowed areas.</div>');
+        return;
+      }
+
+      // Calculate driving route
+      directionsService.route(
+        {
+          origin,
+          destination,
+          travelMode: 'DRIVING',
+          drivingOptions: { departureTime: new Date() }
+        },
+        (resp, status) => {
+          if (status === 'OK') {
+            directionsRenderer.setDirections(resp);
+            const leg = resp.routes[0].legs[0];
+            const distanceKm = leg.distance.value / 1000;
+            const distanceText = leg.distance.text;
+            const normalTime = leg.duration.text;
+            const trafficTime = leg.duration_in_traffic
+              ? leg.duration_in_traffic.text
+              : "Not available";
+
+            // Walking
+            directionsService.route(
+              { origin, destination, travelMode: 'WALKING' },
+              (walkResp, walkStatus) => {
+                let walkTime = null;
+                if (walkStatus === 'OK') {
+                  walkTime = walkResp.routes[0].legs[0].duration.text;
+                }
+                showFares(distanceKm, normalTime, trafficTime, walkTime, distanceText);
+              }
+            );
+          } else {
+            showResult('<div class="fare-card">Directions failed: ' + status + '</div>');
+          }
+        }
+      );
+    });
+  });
+});
+
+function showFares(distanceKm, normalTime, trafficTime, walkTime, distanceText) {
+  let html = "";
+  const taxiFare = computeFare(distanceKm);
+
+  html += `<div class="fare-card">
+            <h3><img src="Car1.png" alt="Driver Emoji" style="height: 15px; vertical-align: middle; border-radius: 5%;"> Car</h3>
+            <strong>Estimated Fare: €${taxiFare.toFixed(2)}</strong><br>
+            Total Distance: ${distanceText}<br>
+            ${trafficTime ? `Duration with traffic: ${trafficTime}<br>` : ""}
+            ${normalTime ? `Normal Duration: ${normalTime}<br>` : ""}
+            Rate: Base €${rates.taxi.base} + €${rates.taxi.perKm}/km
+          </div>`;
+
+  if (walkTime) {
+    html += `<div class="fare-card">
+               <h3><img src="Walk1.png" alt="Driver Emoji" style="height: 15px; vertical-align: middle; border-radius: 5%;"> Walk</h3>
+               Duration: ${walkTime}
+             </div>`;
+  }
+
+  showResult(html);
+}
+
+function showResult(html) {
+  document.getElementById('result').innerHTML = html;
+}
+
+window.onload = initMap;
+</script>
+</body>
+</html>
