@@ -284,17 +284,18 @@ function showFares(distanceKm, normalTime, trafficTime, walkTime, distanceText) 
 
   html += `<div class="fare-card">
             <h3><img src="Car1.png" style="height: 15px; border-radius: 5%;"> Car</h3>
-            <strong>€${taxiFare.toFixed(2)}</strong><br>
-            ${distanceText}<br>
-            ${trafficTime ? `Traffic: ${trafficTime}<br>` : ""}
-            ${normalTime ? `Normal: ${normalTime}<br>` : ""}
-            Base €${rates.taxi.base} + €${rates.taxi.perKm}/km
+            <strong>Estimated Fare: €${taxiFare.toFixed(2)}</strong><br>
+            Total Distance: ${distanceText}<br>
+            ${trafficTime ? `Duration with traffic: ${trafficTime}<br>` : ""}
+            ${normalTime ? `Normal Duration: ${normalTime}<br>` : ""}
+            Rate: Base €${rates.taxi.base} + €${rates.taxi.perKm}/km
           </div>`;
 
   if (walkTime) {
     html += `<div class="fare-card">
                <h3><img src="Walk1.png" style="height: 15px; border-radius: 5%;"> Walk</h3>
                ${distanceText}<br>
+               Total Distance: ${distanceText}<br>
                Duration: ${walkTime}
              </div>`;
   }
