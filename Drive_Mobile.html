@@ -137,8 +137,14 @@
   </div>
 
 <script>
-/* 👇 Same JS as your old working code — untouched */
-const rates = { taxi: { base: 5, perKm: 2 } };
+// --- Allowed towns ---
+const allowedTowns = ["Monaco", "Cap-d'Ail", "Beausoleil", "Roquebrune-Cap-Martin"];
+
+// --- Monaco rates ---
+const rates = {
+  taxi: { base: 5, perKm: 2 }
+};
+
 let map, directionsService, directionsRenderer, trafficLayer, geocoder;
 let activeInput = null;
 
@@ -149,17 +155,18 @@ function initMap() {
   });
   directionsService = new google.maps.DirectionsService();
   directionsRenderer = new google.maps.DirectionsRenderer({ map: map });
+
   trafficLayer = new google.maps.TrafficLayer();
   trafficLayer.setMap(map);
+
   geocoder = new google.maps.Geocoder();
 
+  // Autocomplete
   const originAutocomplete = new google.maps.places.Autocomplete(
-    document.getElementById('origin'),
-    { componentRestrictions: { country: "MC" } }
+    document.getElementById('origin')
   );
   const destAutocomplete = new google.maps.places.Autocomplete(
-    document.getElementById('destination'),
-    { componentRestrictions: { country: "MC" } }
+    document.getElementById('destination')
   );
 
   originAutocomplete.addListener("place_changed", () => {
@@ -174,39 +181,42 @@ function initMap() {
   document.getElementById("origin").addEventListener("focus", () => activeInput = "origin");
   document.getElementById("destination").addEventListener("focus", () => activeInput = "destination");
 
+  // Map click autofill
   map.addListener("click", (e) => {
     if (!activeInput) return;
     geocoder.geocode({ location: e.latLng }, (results, status) => {
       if (status === "OK" && results[0]) {
-        const isMonaco = results[0].address_components.some(c => c.long_name === "Monaco");
-        if (isMonaco) {
+        const isAllowed = results[0].address_components.some(c => allowedTowns.includes(c.long_name));
+        if (isAllowed) {
           document.getElementById(activeInput).value = results[0].formatted_address;
         } else {
-          alert("❌ Please select a location inside Monaco only.");
+          alert("❌ Only Monaco, Cap-d'Ail, Beausoleil, Roquebrune-Cap-Martin allowed.");
         }
       }
     });
   });
 }
 
+// Validate input
 function validatePlace(place, fieldId) {
   if (!place || !place.address_components) {
     document.getElementById(fieldId).value = "";
     alert("❌ Invalid location.");
     return;
   }
-  const isMonaco = place.address_components.some(c => c.long_name === "Monaco");
-  if (!isMonaco) {
+  const isAllowed = place.address_components.some(c => allowedTowns.includes(c.long_name));
+  if (!isAllowed) {
     document.getElementById(fieldId).value = "";
-    alert("❌ Please enter a location inside Monaco only.");
+    alert("❌ Location must be in Monaco, Cap-d'Ail, Beausoleil or Roquebrune-Cap-Martin.");
   }
 }
 
-function isInMonaco(place, callback) {
+// Helper: geocode & check
+function isInAllowedTown(place, callback) {
   geocoder.geocode({ address: place }, (results, status) => {
     if (status === "OK" && results[0]) {
-      const isMonaco = results[0].address_components.some(c => c.long_name === "Monaco");
-      callback(isMonaco);
+      const isAllowed = results[0].address_components.some(c => allowedTowns.includes(c.long_name));
+      callback(isAllowed);
     } else {
       callback(false);
     }
@@ -238,16 +248,19 @@ document.getElementById('calcBtn').addEventListener('click', () => {
     return;
   }
 
-  isInMonaco(origin, (originValid) => {
+  // Validate both
+  isInAllowedTown(origin, (originValid) => {
     if (!originValid) {
-      showResult('<div class="fare-card">❌ Pickup must be inside Monaco.</div>');
+      showResult('<div class="fare-card">❌ Pickup must be inside allowed towns.</div>');
       return;
     }
-    isInMonaco(destination, (destValid) => {
+    isInAllowedTown(destination, (destValid) => {
       if (!destValid) {
-        showResult('<div class="fare-card">❌ Drop must be inside Monaco.</div>');
+        showResult('<div class="fare-card">❌ Drop must be inside allowed towns.</div>');
         return;
       }
+
+      // Driving route
       directionsService.route(
         { origin, destination, travelMode: 'DRIVING', drivingOptions: { departureTime: new Date() } },
         (resp, status) => {
@@ -259,6 +272,7 @@ document.getElementById('calcBtn').addEventListener('click', () => {
             const normalTime = leg.duration.text;
             const trafficTime = leg.duration_in_traffic ? leg.duration_in_traffic.text : "Not available";
 
+            // Walking
             directionsService.route(
               { origin, destination, travelMode: 'WALKING' },
               (walkResp, walkStatus) => {
@@ -279,31 +293,27 @@ document.getElementById('calcBtn').addEventListener('click', () => {
 });
 
 function showFares(distanceKm, normalTime, trafficTime, walkTime, distanceText) {
-  let html = "";
   const taxiFare = computeFare(distanceKm);
 
-  html += `<div class="fare-card">
-            <h3><img src="Car1.png" style="height: 15px; border-radius: 5%;"> Car</h3>
-            <strong>Estimated Fare: €${taxiFare.toFixed(2)}</strong><br>
-            Total Distance: ${distanceText}<br>
-            ${trafficTime ? `Duration with traffic: ${trafficTime}<br>` : ""}
-            ${normalTime ? `Normal Duration: ${normalTime}<br>` : ""}
-            Rate: Base €${rates.taxi.base} + €${rates.taxi.perKm}/km
-          </div>`;
+  let carCard = `<div class="fare-card">
+      <h3><img src="Car1.png" style="height: 15px;"> Car</h3>
+      <strong>Estimated Fare: €${taxiFare.toFixed(2)}</strong><br>
+      Total Distance: ${distanceText}<br>
+      ${trafficTime ? `Duration with traffic: ${trafficTime}<br>` : ""}
+      ${normalTime ? `Normal Duration: ${normalTime}<br>` : ""}
+      Rate: Base €${rates.taxi.base} + €${rates.taxi.perKm}/km
+    </div>`;
 
+  let walkCard = "";
   if (walkTime) {
-    html += `<div class="fare-card">
-               <h3><img src="Walk1.png" style="height: 15px; border-radius: 5%;"> Walk</h3>
-               Total Distance: ${distanceText}<br>
-               Duration: ${walkTime}
-             </div>`;
+    walkCard = `<div class="fare-card">
+        <h3><img src="Walk1.png" style="height: 15px;"> Walk</h3>
+        Total Distance: ${distanceText}<br>
+        Duration: ${walkTime}
+      </div>`;
   }
 
-  showResult(html);
-}
-
-function showResult(html) {
-  document.getElementById('result').innerHTML = html;
+  document.getElementById('result').innerHTML = carCard + walkCard;
 }
 
 window.onload = initMap;
